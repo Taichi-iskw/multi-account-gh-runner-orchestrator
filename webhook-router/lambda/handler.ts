@@ -4,6 +4,7 @@ import {
   GetSecretValueCommand,
 } from "@aws-sdk/client-secrets-manager";
 import axios from "axios";
+import { lambdaUrls } from "./url";
 
 // Secrets Managerクライアントを作成
 const secretsClient = new SecretsManagerClient({
@@ -48,21 +49,34 @@ export const handler = async (event: any) => {
     });
 
     // Webhookイベントを検証＆パース
-    await webhooks.verify(event.body, event.headers["X-Hub-Signature-256"]);
+    const verified = await webhooks.verify(
+      event.body,
+      event.headers["X-Hub-Signature-256"]
+    );
+    if (!verified) {
+      return {
+        statusCode: 401,
+        body: JSON.stringify({ message: "Invalid signature" }),
+      };
+    }
     const payload = JSON.parse(event.body);
 
     // イベント内容をチェック
-    // if (payload.action !== "queued") {
-    if (payload.action !== "queued" && payload.action !== "created") {
+    if (payload.action !== "queued") {
       return {
         statusCode: 200,
         body: JSON.stringify({ message: "Ignored non-queued event" }),
       };
     }
+
+    const labels = payload.workflow_job.labels;
+    const label = labels.find((label: string) => label in lambdaUrls);
+    const url = label ? lambdaUrls[label] : lambdaUrls.default;
+    console.log("✅", label, url);
+
     const repositoryName = payload.repository.name;
     const owner = payload.repository.owner.login;
 
-    const url = process.env.SAMPLE_URL!;
     await axios.post(url, {
       repositoryName,
       owner,
