@@ -1,11 +1,74 @@
-import { helperFunction } from "./utils/helper";
+import { Webhooks } from "@octokit/webhooks";
+import {
+  SecretsManagerClient,
+  GetSecretValueCommand,
+} from "@aws-sdk/client-secrets-manager";
+
+// Secrets Managerクライアントを作成
+const secretsClient = new SecretsManagerClient({
+  region: process.env.AWS_REGION,
+});
+
+// webhook secret を Secrets Manager から取得する関数
+async function getWebhookSecret(): Promise<string> {
+  const secretId = process.env.WEBHOOK_SECRET_ARN; // Lambda環境変数にARNを渡す
+  if (!secretId) {
+    throw new Error("WEBHOOK_SECRET_ARN is not set");
+  }
+
+  const secretValue = await secretsClient.send(
+    new GetSecretValueCommand({
+      SecretId: secretId,
+    })
+  );
+
+  if (!secretValue.SecretString) {
+    throw new Error("SecretString is empty");
+  }
+
+  return secretValue.SecretString;
+}
 
 export const handler = async (event: any) => {
-  console.log("================================================");
-  console.log("event:", event);
-  const message = helperFunction();
-  return {
-    statusCode: 200,
-    body: JSON.stringify({ message }),
-  };
+  if (!event.body || !event.headers || !event.headers["X-Hub-Signature-256"]) {
+    return {
+      statusCode: 400,
+      body: JSON.stringify({ message: "Missing body or signature" }),
+    };
+  }
+
+  try {
+    // Secrets ManagerからWebhook Secretを取得
+    const webhookSecret = await getWebhookSecret();
+
+    // Webhookモジュールをセットアップ
+    const webhooks = new Webhooks({
+      secret: webhookSecret,
+    });
+
+    // Webhookイベントを検証＆パース
+    await webhooks.verify(event.body, event.headers["X-Hub-Signature-256"]);
+    const payload = JSON.parse(event.body);
+
+    // イベント内容をチェック
+    if (payload.action !== "queued") {
+      return {
+        statusCode: 200,
+        body: JSON.stringify({ message: "Ignored non-queued event" }),
+      };
+    }
+
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ message: "Event accepted" }),
+    };
+  } catch (error) {
+    console.error("Error verifying webhook or processing event:", error);
+    return {
+      statusCode: 401,
+      body: JSON.stringify({
+        message: "Invalid signature or processing error",
+      }),
+    };
+  }
 };

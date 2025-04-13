@@ -10,16 +10,16 @@ export class WebhookRouterStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
     const appId = process.env.APP_ID;
-    if (!appId) {
-      throw new Error("APP_ID is not set");
+    const webhookSecret = process.env.WEBHOOK_SECRET;
+    if (!appId || !webhookSecret) {
+      throw new Error(".env is not set");
     }
 
     // GitHubのWebhookシークレットを保存するSecretsManagerリソースを作成
     const secret = new secretsmanager.Secret(this, "WebhookSecret", {
       secretName: "github-webhook-secret",
+      secretStringValue: cdk.SecretValue.unsafePlainText(webhookSecret),
     });
-
-    console.log(process.env.APP_ID);
 
     // Webhookを処理するLambda関数を作成
     const webhookHandler = new NodejsFunction(this, "WebhookHandler", {
@@ -30,7 +30,7 @@ export class WebhookRouterStack extends cdk.Stack {
         externalModules: ["aws-sdk"],
       },
       environment: {
-        SECRET_ARN: secret.secretArn,
+        WEBHOOK_SECRET_ARN: secret.secretArn,
         APP_ID: appId,
       },
     });
