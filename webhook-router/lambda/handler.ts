@@ -3,6 +3,7 @@ import {
   SecretsManagerClient,
   GetSecretValueCommand,
 } from "@aws-sdk/client-secrets-manager";
+import axios from "axios";
 
 // Secrets Managerクライアントを作成
 const secretsClient = new SecretsManagerClient({
@@ -51,16 +52,25 @@ export const handler = async (event: any) => {
     const payload = JSON.parse(event.body);
 
     // イベント内容をチェック
-    if (payload.action !== "queued") {
+    // if (payload.action !== "queued") {
+    if (payload.action !== "queued" && payload.action !== "created") {
       return {
         statusCode: 200,
         body: JSON.stringify({ message: "Ignored non-queued event" }),
       };
     }
+    const repositoryName = payload.repository.name;
+    const owner = payload.repository.owner.login;
+
+    const url = process.env.SAMPLE_URL!;
+    await axios.post(url, {
+      repositoryName,
+      owner,
+    });
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ message: "Event accepted" }),
+      body: JSON.stringify({ message: "OK" }),
     };
   } catch (error) {
     console.error("Error verifying webhook or processing event:", error);

@@ -32,6 +32,7 @@ export class WebhookRouterStack extends cdk.Stack {
       environment: {
         WEBHOOK_SECRET_ARN: secret.secretArn,
         APP_ID: appId,
+        SAMPLE_URL: process.env.SAMPLE_URL!,
       },
     });
 
